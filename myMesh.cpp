@@ -6,6 +6,7 @@
 #include <utility>
 #include <GL/glew.h>
 #include "myVector3D.h"
+#include "myPoint3D.h"
 
 using namespace std;
 
@@ -48,8 +49,9 @@ void myMesh::checkMesh()
 bool myMesh::readFile(std::string filename)
 {
 	string s, t, u;
-	vector<int> faceids;
-	myHalfedge **hedges;
+	// vector<int> faceids;
+	// myHalfedge **hedges;
+	// map<pair<int, int>, myHalfedge *>::iterator it;
 
 	ifstream fin(filename);
 	if (!fin.is_open()) {
@@ -59,35 +61,83 @@ bool myMesh::readFile(std::string filename)
 	name = filename;
 
 	map<pair<int, int>, myHalfedge *> twin_map;
-	map<pair<int, int>, myHalfedge *>::iterator it;
 
 	while (getline(fin, s))
 	{
 		stringstream myline(s);
-		myline >> t;
+		if (!(myline >> t))
+			continue;
+
 		if (t == "g") {}
 		else if (t == "v")
 		{
 			float x, y, z;
 			myline >> x >> y >> z;
-			cout << "v " << x << " " << y << " " << z << endl;
+			myVertex *vx = new myVertex();
+			vx->point = new myPoint3D(x, y, z);
+			vertices.push_back(vx);
 		}
 		else if (t == "mtllib") {}
 		else if (t == "usemtl") {}
 		else if (t == "s") {}
 		else if (t == "f")
 		{
-			cout << "f"; 
-			while (myline >> u) cout << " " << atoi((u.substr(0, u.find("/"))).c_str());
-			cout << endl;
+			vector<int> faceids;
+			while (myline >> u)
+			{
+				string tok = u.substr(0, u.find("/"));
+				int objIdx = atoi(tok.c_str());
+				faceids.push_back(objIdx - 1);
+			}
+			int n = (int)faceids.size();
+
+			myFace *face = new myFace();
+			faces.push_back(face);
+
+			vector<myHalfedge *> he(n);
+			for (int k = 0; k < n; k++)
+			{
+				myHalfedge *h = new myHalfedge();
+				halfedges.push_back(h);
+				he[k] = h;
+
+				int i = faceids[k];
+				int j = faceids[(k + 1) % n];
+
+				h->source = vertices[i];
+				h->adjacent_face = face;
+				if (vertices[i]->originof == NULL)
+					vertices[i]->originof = h;
+
+				pair<int, int> forward(i, j);
+				pair<int, int> backward(j, i);
+				if (twin_map.count(backward))
+				{
+					myHalfedge *tw = twin_map[backward];
+					h->twin = tw;
+					tw->twin = h;
+				}
+				twin_map[forward] = h;
+			}
+			for (int k = 0; k < n; k++)
+			{
+				he[k]->next = he[(k + 1) % n];
+				he[k]->prev = he[(k - 1 + n) % n];
+			}
+			face->adjacent_halfedge = he[0];
 		}
 	}
 
 	checkMesh();
 	normalize();
-
 	return true;
 }
+
+
+
+
+
+
 
 
 void myMesh::computeNormals()
