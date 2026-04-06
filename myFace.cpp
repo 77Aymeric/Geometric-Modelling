@@ -17,7 +17,6 @@ myFace::~myFace(void)
 
 void myFace::computeNormal()
 {
-	/**** TODO ****/ //inspiré de ce qu'il y a avant correction
 	myHalfedge *h = adjacent_halfedge;
 	myVector3D v1, v2;
 	v1.dX = h->source->point->X - h->next->source->point->X;

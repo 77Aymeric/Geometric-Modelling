@@ -18,6 +18,8 @@ myVertex::~myVertex(void)
 
 void myVertex::computeNormal()
 {
+	if (originof == NULL)
+	return;
 	/**** TODO ****/
 	normal->clear();
 	myHalfedge *h = originof;
