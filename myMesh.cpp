@@ -242,100 +242,62 @@ bool myMesh::triangulate(myFace *f)
 	if (n <= 3)
 		return false;
 
-	vector<myVertex *> vlist(n);
-	vector<myHalfedge *> nbrTwin(n);
-	for (int i = 0; i < n; i++) {
-		vlist[i] = bdry[i]->source;
-		nbrTwin[i] = bdry[i]->twin;
-		if (nbrTwin[i] != NULL)
-			nbrTwin[i]->twin = NULL;
-	}
-
-	for (int i = 0; i < n; i++) {
-		for (unsigned int j = 0; j < halfedges.size(); j++) {
-			if (halfedges[j] == bdry[i]) {
-				halfedges.erase(halfedges.begin() + j);
-				break;
-			}
-		}
-		delete bdry[i];
-	}
-
 	for (unsigned int j = 0; j < faces.size(); j++) {
 		if (faces[j] == f) {
 			faces.erase(faces.begin() + j);
 			break;
 		}
 	}
-	delete f;
 
-	double cx = 0.0, cy = 0.0, cz = 0.0;
-	for (int i = 0; i < n; i++) {
-		cx += vlist[i]->point->X;
-		cy += vlist[i]->point->Y;
-		cz += vlist[i]->point->Z;
+	vector<myHalfedge *> diag_fwd(n - 3), diag_bwd(n - 3);
+	for (int k = 0; k < n - 3; k++) {
+		diag_fwd[k] = new myHalfedge();
+		diag_bwd[k] = new myHalfedge();
+		halfedges.push_back(diag_fwd[k]);
+		halfedges.push_back(diag_bwd[k]);
+		diag_fwd[k]->source = bdry[k + 2]->source;
+		diag_bwd[k]->source = bdry[0]->source;
+		diag_fwd[k]->twin = diag_bwd[k];
+		diag_bwd[k]->twin = diag_fwd[k];
 	}
-	cx /= n;
-	cy /= n;
-	cz /= n;
 
-	myVertex *C = new myVertex();
-	C->point = new myPoint3D(cx, cy, cz);
-	vertices.push_back(C);
-
-	vector<myHalfedge *> h0n(n), h1n(n), h2n(n);
-
-	for (int i = 0; i < n; i++) {
+	for (int k = 0; k < n - 2; k++) {
 		myFace *nf = new myFace();
 		faces.push_back(nf);
 
-		myHalfedge *h0 = new myHalfedge();
-		myHalfedge *h1 = new myHalfedge();
-		myHalfedge *h2 = new myHalfedge();
-		halfedges.push_back(h0);
-		halfedges.push_back(h1);
-		halfedges.push_back(h2);
+		myHalfedge *e0, *e1, *e2;
 
-		myVertex *Vi = vlist[i];
-		myVertex *Vj = vlist[(i + 1) % n];
-
-		h0->source = C;
-		h1->source = Vi;
-		h2->source = Vj;
-
-		h0->adjacent_face = nf;
-		h1->adjacent_face = nf;
-		h2->adjacent_face = nf;
-
-		h0->next = h1;
-		h1->next = h2;
-		h2->next = h0;
-		h0->prev = h2;
-		h1->prev = h0;
-		h2->prev = h1;
-
-		nf->adjacent_halfedge = h0;
-
-		if (nbrTwin[i] != NULL) {
-			h1->twin = nbrTwin[i];
-			nbrTwin[i]->twin = h1;
+		if (k == 0) {
+			e0 = bdry[0];
+			e1 = bdry[1];
+			e2 = diag_fwd[0];
+		} else if (k == n - 3) {
+			e0 = diag_bwd[k - 1];
+			e1 = bdry[k + 1];
+			e2 = bdry[n - 1];
+		} else {
+			e0 = diag_bwd[k - 1];
+			e1 = bdry[k + 1];
+			e2 = diag_fwd[k];
 		}
 
-		h0n[i] = h0;
-		h1n[i] = h1;
-		h2n[i] = h2;
+		e0->next = e1;
+		e1->next = e2;
+		e2->next = e0;
+		e0->prev = e2;
+		e1->prev = e0;
+		e2->prev = e1;
+
+		e0->adjacent_face = nf;
+		e1->adjacent_face = nf;
+		e2->adjacent_face = nf;
+
+		nf->adjacent_halfedge = e0;
 	}
 
-	for (int i = 0; i < n; i++) {
-		int prev = (i - 1 + n) % n;
-		h0n[i]->twin = h2n[prev];
-		h2n[prev]->twin = h0n[i];
-	}
+	bdry[0]->source->originof = bdry[0];
 
-	C->originof = h0n[0];
-	for (int i = 0; i < n; i++)
-		vlist[i]->originof = h1n[i];
-
+	delete f;
 	return true;
 }
 

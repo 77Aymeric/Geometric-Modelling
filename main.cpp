@@ -399,7 +399,7 @@ void initMesh()
 	
 	cout << "Reading mesh from file...\n";
 	m = new myMesh();
-	if (m->readFile("dolphin.obj")) {
+	if (m->readFile("apple.obj")) {
 		m->computeNormals();
 		makeBuffers(m);
 		cout << "DEBUG: num_triangles=" << num_triangles << endl;
