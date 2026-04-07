@@ -171,6 +171,8 @@ void display()
 
 	glViewport(0, 0, Glut_w, Glut_h);
 
+	glUseProgram(shaderprogram);
+
 	glm::mat4 projection_matrix = glm::perspective(glm::radians(fovy), (float)Glut_w / (float)Glut_h, zNear, zFar);
 	glUniformMatrix4fv(glGetUniformLocation(shaderprogram, "myprojection_matrix"),
 		1, GL_FALSE, &projection_matrix[0][0]);
@@ -188,51 +190,68 @@ void display()
 	vector<GLfloat> color; 
 	color.resize(4);
 
-	if ( (drawmesh && vaos[VAO_TRIANGLES_NORMSPERVERTEX]) || drawsilhouette)
+	if ((drawmesh && num_triangles > 0) || drawsilhouette)
 	{
 		glLineWidth(1.0);
-		glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(2.0f, 2.0f); //for z-bleeding, z-fighting.
+		glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(2.0f, 2.0f);
 		if (drawsilhouette && !drawmesh)  glUniform1i(glGetUniformLocation(shaderprogram, "type"), 1);
 		if (drawmesh) { color[0] = 0.4f, color[1] = 0.8f, color[2] = 0.4f, color[3] = 1.0f; }
 		else { color[0] = 1.0f, color[1] = 1.0f, color[2] = 1.0f, color[3] = 1.0f; }
 		glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
 
+		glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_VERTICES]);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(0);
+
 		if (smooth)
 		{
-			glBindVertexArray(vaos[VAO_TRIANGLES_NORMSPERVERTEX]);
+			glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_NORMALS_PERVERTEX]);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
+			glEnableVertexAttribArray(1);
 			glDrawArrays(GL_TRIANGLES, 0, num_triangles * 3);
-			glBindVertexArray(0);
 		}
 		else 
 		{
-			glBindVertexArray(vaos[VAO_TRIANGLES_NORMSPERFACE]);
+			glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_NORMALS_PERFACE]);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
+			glEnableVertexAttribArray(1);
 			glDrawArrays(GL_TRIANGLES, 0, num_triangles * 3);
-			glBindVertexArray(0);
 		}
 
 		glUniform1i(glGetUniformLocation(shaderprogram, "type"), 0);
 		glDisable(GL_POLYGON_OFFSET_FILL);
 	}
 
-	if (drawmeshvertices && vaos[VAO_VERTICES])
+	if (drawmeshvertices && buffers[BUFFER_VERTICES])
 	{
 		glPointSize(4.0);
 		color[0] = 0.0f, color[1] = 0.0f, color[2] = 0.0f, color[3] = 1.0f;		
 		glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
 
-		glBindVertexArray(vaos[VAO_VERTICES]);
+		glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_VERTICES]);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_NORMALS_PERVERTEX]);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(1);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffers[BUFFER_INDICES_VERTICES]);
 		glDrawElements(GL_POINTS, m->vertices.size(), GL_UNSIGNED_INT, 0);
-		glBindVertexArray(0);
 	}
 
-	if (drawwireframe && vaos[VAO_EDGES])
+	if (drawwireframe && buffers[BUFFER_INDICES_EDGES])
 	{
 		glLineWidth(2.0);
 		color[0] = 0.0f, color[1] = 0.0f, color[2] = 0.0f, color[3] = 1.0f;		
-        glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
-		glBindVertexArray(vaos[VAO_EDGES]);
+		glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
+
+		glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_VERTICES]);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_NORMALS_PERVERTEX]);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(1);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffers[BUFFER_INDICES_EDGES]);
 		glDrawElements(GL_LINES, m->halfedges.size()*2, GL_UNSIGNED_INT, 0);
-		glBindVertexArray(0);
 	}
 
 	if (drawsilhouette)
@@ -293,15 +312,16 @@ void display()
 		glDeleteBuffers(1, &silhouette_edges_buffer);
  	}
 
-	if (drawnormals && vaos[VAO_NORMALS])
+	if (drawnormals && buffers[BUFFER_VERTICESFORNORMALDRAWING])
 	{
 		glLineWidth(1.0);
 		color[0] = 0.2f, color[1] = 0.2f, color[2] = 0.2f, color[3] = 1.0f;		
 		glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
 
-		glBindVertexArray(vaos[VAO_NORMALS]);
+		glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_VERTICESFORNORMALDRAWING]);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(0);
 		glDrawArrays(GL_LINES, 0, m->vertices.size()*2 );
-		glBindVertexArray(0);
 	}
 
 	if (pickedpoint != NULL)
@@ -379,9 +399,12 @@ void initMesh()
 	
 	cout << "Reading mesh from file...\n";
 	m = new myMesh();
-	if (m->readFile("cube.obj")) {
+	if (m->readFile("dolphin.obj")) {
 		m->computeNormals();
 		makeBuffers(m);
+		cout << "DEBUG: num_triangles=" << num_triangles << endl;
+		cout << "DEBUG: vao[0]=" << vaos[0] << " vao[1]=" << vaos[1] << endl;
+		cout << "DEBUG: drawmesh=" << drawmesh << " smooth=" << smooth << endl;
 	}
 }
 

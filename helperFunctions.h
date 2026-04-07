@@ -161,10 +161,16 @@ void makeBuffers(myMesh *input_mesh)
 	glBufferData(GL_ARRAY_BUFFER, verts_and_normals.size() * sizeof(GLfloat), &verts_and_normals[0], GL_STATIC_DRAW);
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffers[BUFFER_INDICES_EDGES]);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_edges.size() * sizeof(GLuint), &indices_edges[0], GL_STATIC_DRAW);
+	if (!indices_edges.empty())
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_edges.size() * sizeof(GLuint), &indices_edges[0], GL_STATIC_DRAW);
+	else
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, 0, NULL, GL_STATIC_DRAW);
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffers[BUFFER_INDICES_VERTICES]);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_vertices.size() * sizeof(GLuint), &indices_vertices[0], GL_STATIC_DRAW);
+	if (!indices_vertices.empty())
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_vertices.size() * sizeof(GLuint), &indices_vertices[0], GL_STATIC_DRAW);
+	else
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, 0, NULL, GL_STATIC_DRAW);
 
 
 	glGenVertexArrays(NUM_BUFFERS, &vaos[0]);
@@ -684,6 +690,8 @@ GLuint initprogram(GLuint vertexshader, GLuint fragmentshader)
 	GLint linked;
 	glAttachShader(program, vertexshader);
 	glAttachShader(program, fragmentshader);
+	glBindAttribLocation(program, 0, "vertex_modelspace");
+	glBindAttribLocation(program, 1, "normal_modelspace");
 	glLinkProgram(program);
 	glGetProgramiv(program, GL_LINK_STATUS, &linked);
 	if (linked) glUseProgram(program);

@@ -4,6 +4,7 @@
 #include <sstream>
 #include <map>
 #include <utility>
+#include <vector>
 #include <GL/glew.h>
 #include "myVector3D.h"
 #include "myPoint3D.h"
@@ -218,13 +219,123 @@ void myMesh::simplify(myVertex *)
 
 void myMesh::triangulate()
 {
-	/**** TODO ****/
+	std::vector<myFace *> snapshot = faces;
+	for (unsigned int i = 0; i < snapshot.size(); i++)
+		triangulate(snapshot[i]);
 }
 
-//return false if already triangle, true othewise.
+// return false if already triangle, true otherwise.
 bool myMesh::triangulate(myFace *f)
 {
-	/**** TODO ****/
-	return false;
+	if (f == NULL || f->adjacent_halfedge == NULL)
+		return false;
+
+	myHalfedge *start = f->adjacent_halfedge;
+	vector<myHalfedge *> bdry;
+	myHalfedge *walk = start;
+	do {
+		bdry.push_back(walk);
+		walk = walk->next;
+	} while (walk != start);
+
+	int n = (int)bdry.size();
+	if (n <= 3)
+		return false;
+
+	vector<myVertex *> vlist(n);
+	vector<myHalfedge *> nbrTwin(n);
+	for (int i = 0; i < n; i++) {
+		vlist[i] = bdry[i]->source;
+		nbrTwin[i] = bdry[i]->twin;
+		if (nbrTwin[i] != NULL)
+			nbrTwin[i]->twin = NULL;
+	}
+
+	for (int i = 0; i < n; i++) {
+		for (unsigned int j = 0; j < halfedges.size(); j++) {
+			if (halfedges[j] == bdry[i]) {
+				halfedges.erase(halfedges.begin() + j);
+				break;
+			}
+		}
+		delete bdry[i];
+	}
+
+	for (unsigned int j = 0; j < faces.size(); j++) {
+		if (faces[j] == f) {
+			faces.erase(faces.begin() + j);
+			break;
+		}
+	}
+	delete f;
+
+	double cx = 0.0, cy = 0.0, cz = 0.0;
+	for (int i = 0; i < n; i++) {
+		cx += vlist[i]->point->X;
+		cy += vlist[i]->point->Y;
+		cz += vlist[i]->point->Z;
+	}
+	cx /= n;
+	cy /= n;
+	cz /= n;
+
+	myVertex *C = new myVertex();
+	C->point = new myPoint3D(cx, cy, cz);
+	vertices.push_back(C);
+
+	vector<myHalfedge *> h0n(n), h1n(n), h2n(n);
+
+	for (int i = 0; i < n; i++) {
+		myFace *nf = new myFace();
+		faces.push_back(nf);
+
+		myHalfedge *h0 = new myHalfedge();
+		myHalfedge *h1 = new myHalfedge();
+		myHalfedge *h2 = new myHalfedge();
+		halfedges.push_back(h0);
+		halfedges.push_back(h1);
+		halfedges.push_back(h2);
+
+		myVertex *Vi = vlist[i];
+		myVertex *Vj = vlist[(i + 1) % n];
+
+		h0->source = C;
+		h1->source = Vi;
+		h2->source = Vj;
+
+		h0->adjacent_face = nf;
+		h1->adjacent_face = nf;
+		h2->adjacent_face = nf;
+
+		h0->next = h1;
+		h1->next = h2;
+		h2->next = h0;
+		h0->prev = h2;
+		h1->prev = h0;
+		h2->prev = h1;
+
+		nf->adjacent_halfedge = h0;
+
+		if (nbrTwin[i] != NULL) {
+			h1->twin = nbrTwin[i];
+			nbrTwin[i]->twin = h1;
+		}
+
+		h0n[i] = h0;
+		h1n[i] = h1;
+		h2n[i] = h2;
+	}
+
+	for (int i = 0; i < n; i++) {
+		int prev = (i - 1 + n) % n;
+		h0n[i]->twin = h2n[prev];
+		h2n[prev]->twin = h0n[i];
+	}
+
+	C->originof = h0n[0];
+	for (int i = 0; i < n; i++)
+		vlist[i]->originof = h1n[i];
+
+	return true;
 }
 

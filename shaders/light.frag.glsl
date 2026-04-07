@@ -23,7 +23,9 @@ void main(void)
     vec3 N = normalize(mynormal_matrix * mynormal);
 
     float dotLN = max(dot(L, N), 0.0);
-    vec3 color = kd.rgb * lightcolor * dotLN;
+    vec3 ambient = kd.rgb * 0.18;
+    vec3 diffuse = kd.rgb * lightcolor * dotLN;
+    vec3 color = ambient + diffuse;
 
     gl_FragColor = vec4(color, 1.0);
 }
