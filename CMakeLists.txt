@@ -4,6 +4,10 @@ project(MeshViewer)
 set(CMAKE_CXX_STANDARD 17)
 set(OpenGL_GL_PREFERENCE LEGACY)
 
+if(APPLE)
+    add_compile_definitions(GL_SILENCE_DEPRECATION)
+endif()
+
 find_package(OpenGL REQUIRED)
 
 add_executable(MeshViewer
