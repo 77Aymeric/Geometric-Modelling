@@ -185,6 +185,65 @@ void myMesh::normalize()
 }
 
 
+void myMesh::triangulateBary()
+{
+	vector<myFace *> snapshot = faces;
+	for (unsigned int i = 0; i < snapshot.size(); i++)
+		triangulateBary(snapshot[i]);
+}
+
+void myMesh::triangulateBary(myFace *f)
+{
+	if (f == NULL || f->adjacent_halfedge == NULL) return;
+
+	vector<myHalfedge *> bdry;
+	myHalfedge *walk = f->adjacent_halfedge;
+	do { bdry.push_back(walk); walk = walk->next; } while (walk != f->adjacent_halfedge);
+	int n = (int)bdry.size();
+
+	myVertex *center = new myVertex();
+	center->point = new myPoint3D(0, 0, 0);
+	for (int k = 0; k < n; k++) {
+		center->point->X += bdry[k]->source->point->X;
+		center->point->Y += bdry[k]->source->point->Y;
+		center->point->Z += bdry[k]->source->point->Z;
+	}
+	center->point->X /= n;
+	center->point->Y /= n;
+	center->point->Z /= n;
+	vertices.push_back(center);
+
+	for (unsigned int j = 0; j < faces.size(); j++)
+		if (faces[j] == f) { faces.erase(faces.begin() + j); break; }
+
+	// spokes between center and every edge's source vertex
+	vector<myHalfedge *> spoke_out(n), spoke_in(n);
+	for (int k = 0; k < n; k++) {
+		spoke_out[k] = new myHalfedge();
+		spoke_in[k]  = new myHalfedge();
+		halfedges.push_back(spoke_out[k]);
+		halfedges.push_back(spoke_in[k]);
+		spoke_out[k]->source = center;
+		spoke_in[k]->source  = bdry[k]->source;
+		spoke_out[k]->twin   = spoke_in[k];
+		spoke_in[k]->twin    = spoke_out[k];
+	}
+	center->originof = spoke_out[0];
+
+	for (int k = 0; k < n; k++) {
+		myFace *nf = new myFace();
+		faces.push_back(nf);
+		myHalfedge *e0 = bdry[k];
+		myHalfedge *e1 = spoke_in[(k + 1) % n];
+		myHalfedge *e2 = spoke_out[k];
+		e0->next = e1; e1->next = e2; e2->next = e0;
+		e0->prev = e2; e1->prev = e0; e2->prev = e1;
+		e0->adjacent_face = e1->adjacent_face = e2->adjacent_face = nf;
+		nf->adjacent_halfedge = e0;
+	}
+	delete f;
+}
+
 void myMesh::splitFaceTRIS(myFace *f, myPoint3D *p)
 {
 	/**** TODO ****/

@@ -19,7 +19,7 @@ enum MENU { MENU_CATMULLCLARK, MENU_DRAWWIREFRAME, MENU_EXIT, MENU_DRAWMESH, MEN
 	MENU_CONTRACTEDGE, MENU_CONTRACTFACE, MENU_DRAWCREASE, MENU_DRAWSILHOUETTE, 
 	MENU_GENERATE, MENU_CUT, MENU_INFLATE, MENU_SELECTEDGE, MENU_SELECTFACE, MENU_SELECTVERTEX,
 	MENU_SHADINGTYPE, MENU_SMOOTHEN, MENU_SPLITEDGE, MENU_SPLITFACE, MENU_SELECTCLEAR, 
-	MENU_TRIANGULATE, MENU_UNDO, MENU_WRITE, MENU_SIMPLIFY, MENU_DRAWNORMALS, MENU_OPENFILE
+	MENU_TRIANGULATE, MENU_TRIANGULATE_BARY, MENU_UNDO, MENU_WRITE, MENU_SIMPLIFY, MENU_DRAWNORMALS, MENU_OPENFILE
 };
  
 myMesh *m;
@@ -45,6 +45,13 @@ void menu(int item)
 	case MENU_TRIANGULATE:
 		{
 			m->triangulate();
+			m->computeNormals();
+			makeBuffers(m);
+			break;
+		}
+	case MENU_TRIANGULATE_BARY:
+		{
+			m->triangulateBary();
 			m->computeNormals();
 			makeBuffers(m);
 			break;
@@ -399,7 +406,7 @@ void initMesh()
 	
 	cout << "Reading mesh from file...\n";
 	m = new myMesh();
-	if (m->readFile("apple.obj")) {
+	if (m->readFile("dolphin.obj")) {
 		m->computeNormals();
 		makeBuffers(m);
 		cout << "DEBUG: num_triangles=" << num_triangles << endl;
