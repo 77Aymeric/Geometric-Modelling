@@ -10,6 +10,11 @@ uniform vec4 kd;
 
 void main(void)
 {
+    if (type == 1) {
+        gl_FragColor = kd;
+        return;
+    }
+
     vec3 eyepos = vec3(0.0, 0.0, 0.0);
 
     vec4 _mypos = myview_matrix * myvertex;
