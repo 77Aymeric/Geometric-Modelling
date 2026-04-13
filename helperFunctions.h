@@ -8,6 +8,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp> 
 #include <glm/gtc/type_ptr.hpp>
+#ifdef __APPLE__
+#include <OpenGL/OpenGL.h>
+#endif
 
 void menu(int item);
 GLuint initshaders(GLenum type, const char *filename);
@@ -482,7 +485,7 @@ void keyboard2(int key, int x, int y) {
 }
 
 
-void timerFunc(int lastTime)
+void idleFunc()
 {
 	frame++;
 	int time = glutGet(GLUT_ELAPSED_TIME);
@@ -494,7 +497,6 @@ void timerFunc(int lastTime)
 		frame = 0;
 	}
 	glutPostRedisplay();
-	glutTimerFunc((1000 + lastTime - time)/60, timerFunc, time);  
 }
 
 
@@ -552,7 +554,13 @@ void initInterface(int argc, char* argv[])
 	glutMotionFunc(mousedrag);
 	glutMouseFunc(mouse);
 	glutMouseWheelFunc(mouseWheel);
-	glutTimerFunc(1000.0/60, timerFunc, 0);
+	glutIdleFunc(idleFunc);
+
+#ifdef __APPLE__
+	CGLContextObj cglCtx = CGLGetCurrentContext();
+	GLint swapInterval = 0;
+	CGLSetParameter(cglCtx, kCGLCPSwapInterval, &swapInterval);
+#endif
 	
 
 	glEnable(GL_DEPTH_TEST);
