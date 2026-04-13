@@ -5,6 +5,9 @@
 #include <string>
 #include <GL/glew.h>
 #include <GL/freeglut.h>
+#ifdef __APPLE__
+#include <OpenGL/OpenGL.h>
+#endif
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp> 
 #include <glm/gtc/type_ptr.hpp>
@@ -16,13 +19,22 @@ void display();
 
 GLuint  shaderprogram;
 
+// Cached uniform locations (computed once after shader link)
+GLint uloc_projection = -1;
+GLint uloc_view       = -1;
+GLint uloc_normal     = -1;
+GLint uloc_type       = -1;
+GLint uloc_kd         = -1;
+
 // width and height of the window.
-int Glut_w = 600, Glut_h = 400;
+int Glut_w = 300, Glut_h = 200;
 
 //Variables and their values for the camera setup.
 myPoint3D camera_eye(0, 0, 2);
 myVector3D camera_up(0, 1, 0);
 myVector3D camera_forward(0, 0, -1);
+bool camera_dirty = true;
+bool scene_dirty  = true;  // full redraw needed (mesh/camera changed)
 
 float fovy = 45.0f;
 float zNear = 0.1f;
@@ -221,38 +233,44 @@ void makeBuffers(myMesh *input_mesh)
 }
 
 
-void draw_text(GLfloat x, GLfloat y, GLfloat z, string text, vector<GLfloat> color)
+void begin_text()
 {
 	glUseProgram(0);
-
-	GLfloat w = 1;
-	GLfloat fx, fy;
-	glColor3f(color[0], color[1], color[2]);
-
 	glPushAttrib(GL_TRANSFORM_BIT | GL_VIEWPORT_BIT);
-
 	glMatrixMode(GL_PROJECTION);
 	glPushMatrix();
 	glLoadIdentity();
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
 	glLoadIdentity();
+}
 
-	glDepthRange(z, z);
-	glViewport((int)x - 1, (int)y - 1, 2, 2);
-
-	fx = x - (int)x;
-	fy = y - (int)y;
-	glRasterPos4f(fx, fy, 0.0, w);
-
+void end_text()
+{
+	glMatrixMode(GL_MODELVIEW);
 	glPopMatrix();
 	glMatrixMode(GL_PROJECTION);
 	glPopMatrix();
-
 	glPopAttrib();
-
-	glutBitmapString(GLUT_BITMAP_TIMES_ROMAN_24, (const unsigned char *)text.c_str());
 	glUseProgram(shaderprogram);
+}
+
+void draw_text_raw(GLfloat x, GLfloat y, GLfloat z, const string& text, GLfloat r, GLfloat g, GLfloat b)
+{
+	glColor3f(r, g, b);
+	glDepthRange(z, z);
+	glViewport((int)x - 1, (int)y - 1, 2, 2);
+	GLfloat fx = x - (int)x;
+	GLfloat fy = y - (int)y;
+	glRasterPos4f(fx, fy, 0.0f, 1.0f);
+	glutBitmapString(GLUT_BITMAP_TIMES_ROMAN_24, (const unsigned char *)text.c_str());
+}
+
+void draw_text(GLfloat x, GLfloat y, GLfloat z, string text, vector<GLfloat> color)
+{
+	begin_text();
+	draw_text_raw(x, y, z, text, color[0], color[1], color[2]);
+	end_text();
 }
 
 bool PickedPoint(int x, int y)
@@ -445,7 +463,8 @@ void mousedrag(int x, int y)
 	camera_up.normalize();
 	camera_forward.normalize();
 
-	glutPostRedisplay();
+	camera_dirty = true;
+	scene_dirty  = true;
 }
 
 void mouseWheel(int button, int dir, int x, int y)
@@ -454,7 +473,8 @@ void mouseWheel(int button, int dir, int x, int y)
 		camera_eye += camera_forward * 0.02;
 	else
 		camera_eye += -camera_forward * 0.02;
-	glutPostRedisplay();
+	camera_dirty = true;
+	scene_dirty  = true;
 }
 
 
@@ -478,23 +498,14 @@ void keyboard2(int key, int x, int y) {
 		camera_forward.normalize();
 		break;
 	}
-	glutPostRedisplay();
+	camera_dirty = true;
+	scene_dirty  = true;
 }
 
 
-void timerFunc(int lastTime)
+void idleFunc()
 {
-	frame++;
-	int time = glutGet(GLUT_ELAPSED_TIME);
-
-	int diffTime = time - timebase;
-	if (diffTime > 200) {
-		fps = frame * 1000.0f / diffTime;
-		timebase = time;
-		frame = 0;
-	}
-	glutPostRedisplay();
-	glutTimerFunc((1000 + lastTime - time)/60, timerFunc, time);  
+	display();
 }
 
 
@@ -528,7 +539,7 @@ void keyboard(unsigned char key, int x, int y) {
 void initInterface(int argc, char* argv[])
 {
 	glutInit(&argc, argv);
-	glutInitDisplayMode(GLUT_SINGLE | GLUT_RGBA | GLUT_DEPTH | GLUT_MULTISAMPLE);
+	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH | GLUT_MULTISAMPLE);
 	glutCreateWindow("My 4I-IG3 Application!");
 
 	glewExperimental = GL_TRUE;
@@ -552,7 +563,14 @@ void initInterface(int argc, char* argv[])
 	glutMotionFunc(mousedrag);
 	glutMouseFunc(mouse);
 	glutMouseWheelFunc(mouseWheel);
-	glutTimerFunc(1000.0/60, timerFunc, 0);
+	glutIdleFunc(idleFunc);
+
+#ifdef __APPLE__
+	// Disable VSync on macOS so the framerate is not capped to 60 Hz
+	CGLContextObj ctx = CGLGetCurrentContext();
+	GLint swapInterval = 0;
+	CGLSetParameter(ctx, kCGLCPSwapInterval, &swapInterval);
+#endif
 	
 
 	glEnable(GL_DEPTH_TEST);
@@ -566,6 +584,11 @@ void initInterface(int argc, char* argv[])
 	GLuint fragmentshader = initshaders(GL_FRAGMENT_SHADER, "shaders/light.frag.glsl");
 	shaderprogram = initprogram(vertexshader, fragmentshader);
 
+	uloc_projection = glGetUniformLocation(shaderprogram, "myprojection_matrix");
+	uloc_view       = glGetUniformLocation(shaderprogram, "myview_matrix");
+	uloc_normal     = glGetUniformLocation(shaderprogram, "mynormal_matrix");
+	uloc_type       = glGetUniformLocation(shaderprogram, "type");
+	uloc_kd         = glGetUniformLocation(shaderprogram, "kd");
 
 	int sm1 = glutCreateMenu(menu);
 	glutAddMenuEntry("Vertex-shading/face-shading", MENU_SHADINGTYPE);

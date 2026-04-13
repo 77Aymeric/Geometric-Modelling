@@ -15,6 +15,7 @@ add_executable(MeshViewer
     myMesh.cpp
     myVertex.cpp
     external/glew/src/glew.c
+    macos_perf.mm
 )
 
 set_source_files_properties(external/glew/src/glew.c PROPERTIES LANGUAGE C)
@@ -29,4 +30,5 @@ target_include_directories(MeshViewer PRIVATE
 target_link_libraries(MeshViewer
     ${OPENGL_LIBRARIES}
     "-framework GLUT"
+    "-framework Foundation"
 )

@@ -2,6 +2,11 @@
 #include <GL/glew.h>
 #include <GL/freeglut.h>
 #include <sstream>
+#ifdef __APPLE__
+#include <pthread.h>
+#include <mach/mach_time.h>
+void enableHighPerformanceMode(); // defined in macos_perf.mm
+#endif
 
 
 #define GLM_FORCE_RADIANS
@@ -167,44 +172,67 @@ void menu(int item)
 			break;
 	 	}
 	}
-	glutPostRedisplay();
+	scene_dirty = true;
 }
 
 //This function is called to display objects on screen.
 void display() 
 {
-	//Clearing the color on the screen.
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	frame++;
+#ifdef __APPLE__
+	static mach_timebase_info_data_t tb = {0,0};
+	if (tb.denom == 0) mach_timebase_info(&tb);
+	int time = (int)(mach_absolute_time() * tb.numer / tb.denom / 1000000);
+#else
+	int time = glutGet(GLUT_ELAPSED_TIME);
+#endif
+	int diffTime = time - timebase;
+	if (diffTime > 200) {
+		fps = frame * 1000.0f / diffTime;
+		timebase = time;
+		frame = 0;
+	}
 
-	glViewport(0, 0, Glut_w, Glut_h);
+	if (!scene_dirty) {
+		glutSwapBuffers();
+		return;
+	}
+	scene_dirty = false;
+
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glUseProgram(shaderprogram);
 
-	glm::mat4 projection_matrix = glm::perspective(glm::radians(fovy), (float)Glut_w / (float)Glut_h, zNear, zFar);
-	glUniformMatrix4fv(glGetUniformLocation(shaderprogram, "myprojection_matrix"),
-		1, GL_FALSE, &projection_matrix[0][0]);
+	static int last_w = -1, last_h = -1;
+	if (Glut_w != last_w || Glut_h != last_h) {
+		last_w = Glut_w; last_h = Glut_h;
+		glViewport(0, 0, Glut_w, Glut_h);
+		glm::mat4 pm = glm::perspective(glm::radians(fovy), (float)Glut_w / (float)Glut_h, zNear, zFar);
+		glUniformMatrix4fv(uloc_projection, 1, GL_FALSE, &pm[0][0]);
+		camera_dirty = true; // force view/normal reupload after projection change
+	}
 
-	glm::mat4 view_matrix = glm::lookAt(glm::vec3(camera_eye.X, camera_eye.Y, camera_eye.Z),
-										glm::vec3(camera_eye.X + camera_forward.dX, camera_eye.Y + camera_forward.dY, camera_eye.Z + camera_forward.dZ),
-										glm::vec3(camera_up.dX, camera_up.dY, camera_up.dZ));
-	glUniformMatrix4fv(glGetUniformLocation(shaderprogram, "myview_matrix"),
-		1, GL_FALSE, &view_matrix[0][0]);
-
-	glm::mat3 normal_matrix = glm::transpose(glm::inverse(glm::mat3(view_matrix)));
-	glUniformMatrix3fv(glGetUniformLocation(shaderprogram, "mynormal_matrix"),
-		1, GL_FALSE, &normal_matrix[0][0]);
+	if (camera_dirty) {
+		camera_dirty = false;
+		glm::mat4 view_matrix = glm::lookAt(
+			glm::vec3(camera_eye.X, camera_eye.Y, camera_eye.Z),
+			glm::vec3(camera_eye.X + camera_forward.dX, camera_eye.Y + camera_forward.dY, camera_eye.Z + camera_forward.dZ),
+			glm::vec3(camera_up.dX, camera_up.dY, camera_up.dZ));
+		glUniformMatrix4fv(uloc_view, 1, GL_FALSE, &view_matrix[0][0]);
+		glm::mat3 normal_matrix = glm::transpose(glm::inverse(glm::mat3(view_matrix)));
+		glUniformMatrix3fv(uloc_normal, 1, GL_FALSE, &normal_matrix[0][0]);
+	}
  
-	vector<GLfloat> color; 
-	color.resize(4);
+	static GLfloat color[4] = {0,0,0,1};
 
 	if ((drawmesh && num_triangles > 0) || drawsilhouette)
 	{
 		glLineWidth(1.0);
 		glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(2.0f, 2.0f);
-		if (drawsilhouette && !drawmesh)  glUniform1i(glGetUniformLocation(shaderprogram, "type"), 1);
+		if (drawsilhouette && !drawmesh)  glUniform1i(uloc_type, 1);
 		if (drawmesh) { color[0] = 0.4f, color[1] = 0.8f, color[2] = 0.4f, color[3] = 1.0f; }
 		else { color[0] = 1.0f, color[1] = 1.0f, color[2] = 1.0f, color[3] = 1.0f; }
-		glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
+		glUniform4fv(uloc_kd, 1, &color[0]);
 
 		glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_VERTICES]);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
@@ -225,7 +253,7 @@ void display()
 			glDrawArrays(GL_TRIANGLES, 0, num_triangles * 3);
 		}
 
-		glUniform1i(glGetUniformLocation(shaderprogram, "type"), 0);
+		glUniform1i(uloc_type, 0);
 		glDisable(GL_POLYGON_OFFSET_FILL);
 	}
 
@@ -233,7 +261,7 @@ void display()
 	{
 		glPointSize(4.0);
 		color[0] = 0.0f, color[1] = 0.0f, color[2] = 0.0f, color[3] = 1.0f;		
-		glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
+		glUniform4fv(uloc_kd, 1, &color[0]);
 
 		glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_VERTICES]);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
@@ -249,7 +277,7 @@ void display()
 	{
 		glLineWidth(2.0);
 		color[0] = 0.0f, color[1] = 0.0f, color[2] = 0.0f, color[3] = 1.0f;		
-		glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
+		glUniform4fv(uloc_kd, 1, &color[0]);
 
 		glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_VERTICES]);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
@@ -265,7 +293,7 @@ void display()
 	{
 		glLineWidth(4.0);
 		color[0] = 1.0f, color[1] = 0.0f, color[2] = 0.0f, color[3] = 1.0f;		
-		glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
+		glUniform4fv(uloc_kd, 1, &color[0]);
 
 		vector <GLuint> silhouette_edges;
 		for (vector<myHalfedge *>::iterator it = m->halfedges.begin(); it != m->halfedges.end(); it++)
@@ -323,7 +351,7 @@ void display()
 	{
 		glLineWidth(1.0);
 		color[0] = 0.2f, color[1] = 0.2f, color[2] = 0.2f, color[3] = 1.0f;		
-		glUniform4fv(glGetUniformLocation(shaderprogram, "kd"), 1, &color[0]);
+		glUniform4fv(uloc_kd, 1, &color[0]);
 
 		glBindBuffer(GL_ARRAY_BUFFER, buffers[BUFFER_VERTICESFORNORMALDRAWING]);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
@@ -386,14 +414,14 @@ void display()
 	}
  
 
-	color[0] = 0.0f, color[1] = 0.0f, color[2] = 0.0f;
-	draw_text(0.0f, 1.0f, 0, "Vertices:    " + to_string(static_cast<long long>(m->vertices.size())), color );
-	draw_text(0.0f,22.0f, 0,"Halfedges: " + to_string(static_cast<long long>(m->halfedges.size())), color );
-	draw_text(0.0f,41.0f, 0,"Faces:       " + to_string(static_cast<long long>(m->faces.size())), color );
-	color[0] = 0.9f;
-	draw_text(Glut_w - 150.0f, Glut_h - 20.0f, 0, "FPS:       " + to_string(static_cast<long long>( fps)), color );
+	static long long last_fps = -1;
+	long long ifps = static_cast<long long>(fps);
+	if (ifps != last_fps) {
+		last_fps = ifps;
+		glutSetWindowTitle(("FPS: " + to_string(ifps)).c_str());
+	}
 
-	glFlush();
+	glutSwapBuffers();
 }
 
 
@@ -418,6 +446,11 @@ void initMesh()
 
 int main(int argc, char* argv[]) 
 {
+#ifdef __APPLE__
+	pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+	enableHighPerformanceMode();
+#endif
+
 	initInterface(argc, argv);
 
 	initMesh();
