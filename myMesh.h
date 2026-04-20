@@ -29,6 +29,8 @@ public:
 	bool triangulate(myFace *);
 	void triangulateBary();
 	void triangulateBary(myFace *);
+	void triangulateEarClipping();
+	void triangulateEarClipping(myFace *);
 	void simplify();
 	void simplify(myVertex *);
 

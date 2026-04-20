@@ -611,6 +611,7 @@ void initInterface(int argc, char* argv[])
 	glutAddMenuEntry("Open File", MENU_OPENFILE);
 	glutAddMenuEntry("Triangulate (fan)", MENU_TRIANGULATE);
 	glutAddMenuEntry("Triangulate (barycentre)", MENU_TRIANGULATE_BARY);
+	glutAddMenuEntry("Triangulate (ear clipping)", MENU_TRIANGULATE_EARCLIPPING);
 	glutAddMenuEntry("Write to File", MENU_WRITE);
 	glutAddMenuEntry("Undo", MENU_UNDO);
 	glutAddMenuEntry("Generate Mesh", MENU_GENERATE);

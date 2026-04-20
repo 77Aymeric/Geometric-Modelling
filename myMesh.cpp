@@ -194,54 +194,84 @@ void myMesh::triangulateBary()
 
 void myMesh::triangulateBary(myFace *f)
 {
-	if (f == NULL || f->adjacent_halfedge == NULL) return;
+    if (f == NULL) return;
+    if (f->adjacent_halfedge == NULL) return;
 
-	vector<myHalfedge *> bdry;
-	myHalfedge *walk = f->adjacent_halfedge;
-	do { bdry.push_back(walk); walk = walk->next; } while (walk != f->adjacent_halfedge);
-	int n = (int)bdry.size();
+    vector<myHalfedge*> border;
+    myHalfedge* current = f->adjacent_halfedge;
 
-	myVertex *center = new myVertex();
-	center->point = new myPoint3D(0, 0, 0);
-	for (int k = 0; k < n; k++) {
-		center->point->X += bdry[k]->source->point->X;
-		center->point->Y += bdry[k]->source->point->Y;
-		center->point->Z += bdry[k]->source->point->Z;
-	}
-	center->point->X /= n;
-	center->point->Y /= n;
-	center->point->Z /= n;
-	vertices.push_back(center);
+    do {
+        border.push_back(current);
+        current = current->next;
+    } while (current != f->adjacent_halfedge);
 
-	for (unsigned int j = 0; j < faces.size(); j++)
-		if (faces[j] == f) { faces.erase(faces.begin() + j); break; }
+    int n = (int)border.size();
 
-	// spokes between center and every edge's source vertex
-	vector<myHalfedge *> spoke_out(n), spoke_in(n);
-	for (int k = 0; k < n; k++) {
-		spoke_out[k] = new myHalfedge();
-		spoke_in[k]  = new myHalfedge();
-		halfedges.push_back(spoke_out[k]);
-		halfedges.push_back(spoke_in[k]);
-		spoke_out[k]->source = center;
-		spoke_in[k]->source  = bdry[k]->source;
-		spoke_out[k]->twin   = spoke_in[k];
-		spoke_in[k]->twin    = spoke_out[k];
-	}
-	center->originof = spoke_out[0];
+    myVertex* center = new myVertex();
+    center->point = new myPoint3D(0, 0, 0);
 
-	for (int k = 0; k < n; k++) {
-		myFace *nf = new myFace();
-		faces.push_back(nf);
-		myHalfedge *e0 = bdry[k];
-		myHalfedge *e1 = spoke_in[(k + 1) % n];
-		myHalfedge *e2 = spoke_out[k];
-		e0->next = e1; e1->next = e2; e2->next = e0;
-		e0->prev = e2; e1->prev = e0; e2->prev = e1;
-		e0->adjacent_face = e1->adjacent_face = e2->adjacent_face = nf;
-		nf->adjacent_halfedge = e0;
-	}
-	delete f;
+    for (int i = 0; i < n; i++) {
+        center->point->X += border[i]->source->point->X;
+        center->point->Y += border[i]->source->point->Y;
+        center->point->Z += border[i]->source->point->Z;
+    }
+
+    center->point->X /= n;
+    center->point->Y /= n;
+    center->point->Z /= n;
+
+    vertices.push_back(center);
+
+    for (unsigned int i = 0; i < faces.size(); i++) {
+        if (faces[i] == f) {
+            faces.erase(faces.begin() + i);
+            break;
+        }
+    }
+
+    vector<myHalfedge*> edgeFromCenter(n);
+    vector<myHalfedge*> edgeToCenter(n);
+
+    for (int i = 0; i < n; i++) {
+        edgeFromCenter[i] = new myHalfedge();
+        edgeToCenter[i] = new myHalfedge();
+
+        halfedges.push_back(edgeFromCenter[i]);
+        halfedges.push_back(edgeToCenter[i]);
+
+        edgeFromCenter[i]->source = center;
+        edgeToCenter[i]->source = border[i]->source;
+
+        edgeFromCenter[i]->twin = edgeToCenter[i];
+        edgeToCenter[i]->twin = edgeFromCenter[i];
+    }
+
+    center->originof = edgeFromCenter[0];
+
+    for (int i = 0; i < n; i++) {
+        myFace* newFace = new myFace();
+        faces.push_back(newFace);
+
+        myHalfedge* h0 = border[i];
+        myHalfedge* h1 = edgeToCenter[(i + 1) % n];
+        myHalfedge* h2 = edgeFromCenter[i];
+
+        h0->next = h1;
+        h1->next = h2;
+        h2->next = h0;
+
+        h0->prev = h2;
+        h1->prev = h0;
+        h2->prev = h1;
+
+        h0->adjacent_face = newFace;
+        h1->adjacent_face = newFace;
+        h2->adjacent_face = newFace;
+
+        newFace->adjacent_halfedge = h0;
+    }
+
+    delete f;
 }
 
 void myMesh::splitFaceTRIS(myFace *f, myPoint3D *p)
@@ -360,3 +390,153 @@ bool myMesh::triangulate(myFace *f)
 	return true;
 }
 
+void myMesh::triangulateEarClipping()
+{
+	vector<myFace *> snapshot = faces;
+	for (unsigned int i = 0; i < snapshot.size(); i++)
+		triangulateEarClipping(snapshot[i]);
+}
+
+void myMesh::triangulateEarClipping(myFace *f)
+{
+	const double eps = 1e-10;
+
+	if (f == NULL || f->adjacent_halfedge == NULL) return;
+
+	int n = 0;
+	myHalfedge *start = f->adjacent_halfedge;
+	myHalfedge *e = start;
+	do {
+		n++;
+		e = e->next;
+	} while (e != start);
+
+	if (n <= 3) return;
+
+	vector<myHalfedge *> hedges;
+	vector<myVertex *> verts;
+
+	e = start;
+	do {
+		hedges.push_back(e);
+		verts.push_back(e->source);
+		e = e->next;
+	} while (e != start);
+
+	myVector3D faceN(0, 0, 0);
+	for (int i = 0; i < n; i++) {
+		myPoint3D *a = verts[i]->point;
+		myPoint3D *b = verts[(i + 1) % n]->point;
+
+		faceN.dX += (a->Y - b->Y) * (a->Z + b->Z);
+		faceN.dY += (a->Z - b->Z) * (a->X + b->X);
+		faceN.dZ += (a->X - b->X) * (a->Y + b->Y);
+	}
+
+	if (faceN.length() < eps) return;
+
+	vector<int> nextIndex(n);
+	vector<int> prevIndex(n);
+
+	for (int i = 0; i < n; i++) {
+		nextIndex[i] = (i + 1) % n;
+		prevIndex[i] = (i - 1 + n) % n;
+	}
+
+	int remaining = n;
+	int current = 0;
+
+	while (remaining > 3) {
+		bool earFound = false;
+		int first = current;
+
+		do {
+			int p = prevIndex[current];
+			int nx = nextIndex[current];
+
+			myVector3D v1 = *verts[current]->point - *verts[p]->point;
+			myVector3D v2 = *verts[nx]->point - *verts[current]->point;
+
+			if (v1.crossproduct(v2) * faceN > 0) {
+				bool isEar = true;
+
+				int test = nextIndex[nx];
+				while (test != p) {
+					myVector3D c0 = (*verts[current]->point - *verts[p]->point).crossproduct(*verts[test]->point - *verts[p]->point);
+					myVector3D c1 = (*verts[nx]->point - *verts[current]->point).crossproduct(*verts[test]->point - *verts[current]->point);
+					myVector3D c2 = (*verts[p]->point - *verts[nx]->point).crossproduct(*verts[test]->point - *verts[nx]->point);
+
+					if (c0 * faceN > eps && c1 * faceN > eps && c2 * faceN > eps) {
+						isEar = false;
+						break;
+					}
+
+					test = nextIndex[test];
+				}
+
+				if (isEar) {
+					myHalfedge *diagIn = new myHalfedge();
+					myHalfedge *diagOut = new myHalfedge();
+
+					diagIn->source = verts[nx];
+					diagOut->source = verts[p];
+
+					diagIn->twin = diagOut;
+					diagOut->twin = diagIn;
+
+					halfedges.push_back(diagIn);
+					halfedges.push_back(diagOut);
+
+					myFace *newFace = new myFace();
+					faces.push_back(newFace);
+					newFace->adjacent_halfedge = hedges[p];
+
+					hedges[p]->next = hedges[current];
+					hedges[current]->next = diagIn;
+					diagIn->next = hedges[p];
+
+					hedges[p]->prev = diagIn;
+					hedges[current]->prev = hedges[p];
+					diagIn->prev = hedges[current];
+
+					hedges[p]->adjacent_face = newFace;
+					hedges[current]->adjacent_face = newFace;
+					diagIn->adjacent_face = newFace;
+
+					hedges[p] = diagOut;
+
+					nextIndex[p] = nx;
+					prevIndex[nx] = p;
+
+					remaining--;
+					current = nx;
+					earFound = true;
+					break;
+				}
+			}
+
+			current = nextIndex[current];
+
+		} while (current != first);
+
+		if (!earFound) break;
+	}
+
+	int i0 = current;
+	int i1 = nextIndex[i0];
+	int i2 = nextIndex[i1];
+
+	f->adjacent_halfedge = hedges[i0];
+
+	hedges[i0]->next = hedges[i1];
+	hedges[i1]->next = hedges[i2];
+	hedges[i2]->next = hedges[i0];
+
+	hedges[i0]->prev = hedges[i2];
+	hedges[i1]->prev = hedges[i0];
+	hedges[i2]->prev = hedges[i1];
+
+	hedges[i0]->adjacent_face = f;
+	hedges[i1]->adjacent_face = f;
+	hedges[i2]->adjacent_face = f;
+}

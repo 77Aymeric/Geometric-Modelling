@@ -19,7 +19,8 @@ enum MENU { MENU_CATMULLCLARK, MENU_DRAWWIREFRAME, MENU_EXIT, MENU_DRAWMESH, MEN
 	MENU_CONTRACTEDGE, MENU_CONTRACTFACE, MENU_DRAWCREASE, MENU_DRAWSILHOUETTE, 
 	MENU_GENERATE, MENU_CUT, MENU_INFLATE, MENU_SELECTEDGE, MENU_SELECTFACE, MENU_SELECTVERTEX,
 	MENU_SHADINGTYPE, MENU_SMOOTHEN, MENU_SPLITEDGE, MENU_SPLITFACE, MENU_SELECTCLEAR, 
-	MENU_TRIANGULATE, MENU_TRIANGULATE_BARY, MENU_UNDO, MENU_WRITE, MENU_SIMPLIFY, MENU_DRAWNORMALS, MENU_OPENFILE
+	MENU_TRIANGULATE, MENU_TRIANGULATE_BARY, MENU_TRIANGULATE_EARCLIPPING,
+	MENU_UNDO, MENU_WRITE, MENU_SIMPLIFY, MENU_DRAWNORMALS, MENU_OPENFILE
 };
  
 myMesh *m;
@@ -52,6 +53,13 @@ void menu(int item)
 	case MENU_TRIANGULATE_BARY:
 		{
 			m->triangulateBary();
+			m->computeNormals();
+			makeBuffers(m);
+			break;
+		}
+	case MENU_TRIANGULATE_EARCLIPPING:
+		{
+			m->triangulateEarClipping();
 			m->computeNormals();
 			makeBuffers(m);
 			break;
@@ -406,7 +414,7 @@ void initMesh()
 	
 	cout << "Reading mesh from file...\n";
 	m = new myMesh();
-	if (m->readFile("dolphin.obj")) {
+	if (m->readFile("gear.obj")) {
 		m->computeNormals();
 		makeBuffers(m);
 		cout << "DEBUG: num_triangles=" << num_triangles << endl;
