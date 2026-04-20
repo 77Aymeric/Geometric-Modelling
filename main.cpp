@@ -2,6 +2,8 @@
 #include <GL/glew.h>
 #include <GL/freeglut.h>
 #include <sstream>
+#include <cstdio>
+#include <algorithm>
 
 
 #define GLM_FORCE_RADIANS
@@ -30,6 +32,34 @@ myVertex *closest_vertex;
 myFace *closest_face;
 
 #include "helperFunctions.h"
+
+static std::string trimNewlines(std::string s)
+{
+	while (!s.empty() && (s.back() == '\n' || s.back() == '\r'))
+		s.pop_back();
+	return s;
+}
+
+static std::string pickMeshFile()
+{
+#ifdef __APPLE__
+	// Returns POSIX path, empty on cancel/error.
+	const char *cmd = "osascript -e 'POSIX path of (choose file with prompt \"Open mesh\" of type {\"obj\"})'";
+	FILE *pipe = popen(cmd, "r");
+	if (!pipe) return "";
+	std::string out;
+	char buffer[1024];
+	while (fgets(buffer, sizeof(buffer), pipe) != nullptr) out += buffer;
+	int rc = pclose(pipe);
+	if (rc != 0) return "";
+	return trimNewlines(out);
+#else
+	std::cout << "Enter mesh filename (.obj): " << std::flush;
+	std::string filename;
+	std::getline(std::cin >> std::ws, filename);
+	return trimNewlines(filename);
+#endif
+}
 
 void clear()
 {
@@ -174,6 +204,24 @@ void menu(int item)
 			m->simplify();
 			break;
 	 	}
+	case MENU_OPENFILE:
+		{
+			const std::string filename = pickMeshFile();
+			if (filename.empty()) break;
+
+			// Reset any selection state tied to the previous mesh.
+			if (pickedpoint) { delete pickedpoint; pickedpoint = NULL; }
+			clear();
+
+			m->clear();
+			if (m->readFile(filename)) {
+				m->computeNormals();
+				makeBuffers(m);
+			} else {
+				std::cerr << "Unable to open mesh file: " << filename << "\n";
+			}
+			break;
+		}
 	}
 	glutPostRedisplay();
 }
