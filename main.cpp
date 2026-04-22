@@ -191,6 +191,13 @@ void menu(int item)
 			makeBuffers(m);
 			break;
 		}
+	case MENU_GENERATE:
+		{
+			m->generateRevolution();
+			m->computeNormals();
+			makeBuffers(m);
+			break;
+		}
 	case MENU_EXIT:
 		{
 			m->clear();

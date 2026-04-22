@@ -306,6 +306,91 @@ void myMesh::simplify(myVertex *)
 	/**** TODO ****/
 }
 
+void myMesh::generateRevolution()
+{
+	clear();
+
+	double profile[][2] = {
+		{0.50, +0.47},
+		{0.46, +0.42},
+		{0.43, +0.37},
+		{0.40, +0.32},
+		{0.35, +0.25},
+		{0.29, +0.19},
+		{0.27, +0.12},
+		{0.30, +0.06},
+		{0.37, +0.02},
+		{0.48, -0.03},
+		{0.58, -0.07},
+		{0.69, -0.13},
+		{0.73, -0.23},
+		{0.68, -0.32},
+		{0.56, -0.39},
+		{0.41, -0.44},
+		{0.38, -0.45},
+		{0.36, -0.46},
+		{0.33, -0.46},
+	};
+	int m = 19;
+	int n = 20;
+
+	for (int i = 0; i < n; i++) {
+		double theta = 2.0 * M_PI * i / n;
+		for (int j = 0; j < m; j++) {
+			double r = profile[j][0];
+			double y = profile[j][1];
+			myVertex *v = new myVertex();
+			v->point = new myPoint3D(r * cos(theta), y, r * sin(theta));
+			vertices.push_back(v);
+		}
+	}
+
+	map<pair<int,int>, myHalfedge*> twin_map;
+
+	for (int i = 0; i < n; i++) {
+		int ni = (i + 1) % n;
+		for (int j = 0; j < m - 1; j++) {
+			int triA[3] = { i*m+j,   ni*m+j,   ni*m+j+1 };
+			int triB[3] = { i*m+j,   ni*m+j+1, i*m+j+1  };
+
+			for (int t = 0; t < 2; t++) {
+				int *ids = (t == 0) ? triA : triB;
+
+				myFace *f = new myFace();
+				faces.push_back(f);
+
+				myHalfedge *he[3];
+				for (int k = 0; k < 3; k++) {
+					he[k] = new myHalfedge();
+					halfedges.push_back(he[k]);
+					he[k]->source = vertices[ids[k]];
+					he[k]->adjacent_face = f;
+					if (!vertices[ids[k]]->originof)
+						vertices[ids[k]]->originof = he[k];
+				}
+
+				for (int k = 0; k < 3; k++) {
+					he[k]->next = he[(k+1)%3];
+					he[k]->prev = he[(k+2)%3];
+				}
+				f->adjacent_halfedge = he[0];
+
+				for (int k = 0; k < 3; k++) {
+					int src = ids[k], dst = ids[(k+1)%3];
+					pair<int,int> fwd(src, dst), bwd(dst, src);
+					if (twin_map.count(bwd)) {
+						he[k]->twin = twin_map[bwd];
+						twin_map[bwd]->twin = he[k];
+					}
+					twin_map[fwd] = he[k];
+				}
+			}
+		}
+	}
+
+	normalize();
+}
+
 void myMesh::triangulate()
 {
 	std::vector<myFace *> snapshot = faces;

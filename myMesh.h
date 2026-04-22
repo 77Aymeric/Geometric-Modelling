@@ -34,6 +34,8 @@ public:
 	void simplify();
 	void simplify(myVertex *);
 
+	void generateRevolution();
+
 	void clear();
 
 	myMesh(void);
