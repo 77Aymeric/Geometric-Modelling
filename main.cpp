@@ -1,6 +1,6 @@
 #include <fstream>
 #include <GL/glew.h>
-#include <GL/freeglut.h>
+#include "meshviewer_glut.h"
 #include <sstream>
 #include <cstdio>
 #include <algorithm>
@@ -236,6 +236,22 @@ void menu(int item)
 //This function is called to display objects on screen.
 void display() 
 {
+	static bool graphics_initialized = false;
+	if (!graphics_initialized) {
+		finishGraphicsInit();
+		graphics_initialized = true;
+	}
+
+	if (shaderprogram == 0 || m == nullptr) {
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+#ifdef __APPLE__
+		glutSwapBuffers();
+#else
+		glFlush();
+#endif
+		return;
+	}
+
 	//Clearing the color on the screen.
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -456,7 +472,11 @@ void display()
 	color[0] = 0.9f;
 	draw_text(Glut_w - 150.0f, Glut_h - 20.0f, 0, "FPS:       " + to_string(static_cast<long long>( fps)), color );
 
+#ifdef __APPLE__
+	glutSwapBuffers();
+#else
 	glFlush();
+#endif
 }
 
 
@@ -471,10 +491,7 @@ void initMesh()
 	m = new myMesh();
 	if (m->readFile("gear.obj")) {
 		m->computeNormals();
-		makeBuffers(m);
-		cout << "DEBUG: num_triangles=" << num_triangles << endl;
-		cout << "DEBUG: vao[0]=" << vaos[0] << " vao[1]=" << vaos[1] << endl;
-		cout << "DEBUG: drawmesh=" << drawmesh << " smooth=" << smooth << endl;
+		// makeBuffers : après GLEW, au premier display() (voir finishGraphicsInit).
 	}
 }
 

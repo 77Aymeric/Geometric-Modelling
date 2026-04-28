@@ -4,7 +4,7 @@
 #include <fstream>
 #include <string>
 #include <GL/glew.h>
-#include <GL/freeglut.h>
+#include "meshviewer_glut.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp> 
 #include <glm/gtc/type_ptr.hpp>
@@ -16,6 +16,8 @@ void menu(int item);
 GLuint initshaders(GLenum type, const char *filename);
 GLuint initprogram(GLuint, GLuint);
 void display();
+// Premier appel depuis display() : GLEW + shaders + menus (GLUT 3 / VM : évite redisplay sans callback).
+void finishGraphicsInit();
 
 GLuint  shaderprogram;
 
@@ -503,8 +505,8 @@ void idleFunc()
 void reshape(int width, int height) {
 	Glut_w = width;
 	Glut_h = height;
-
-	glutPostRedisplay();
+	if (shaderprogram != 0)
+		glutPostRedisplay();
 }
 
 
@@ -526,55 +528,8 @@ void keyboard(unsigned char key, int x, int y) {
 	glutPostRedisplay();
 }
 
-
-void initInterface(int argc, char* argv[])
+static void setupGlutMenus(int)
 {
-	glutInit(&argc, argv);
-	glutInitDisplayMode(GLUT_SINGLE | GLUT_RGBA | GLUT_DEPTH | GLUT_MULTISAMPLE);
-	glutCreateWindow("My 4I-IG3 Application!");
-
-	glewExperimental = GL_TRUE;
-	GLenum glewErr = glewInit();
-	if (glewErr != GLEW_OK) {
-		std::cerr << "GLEW init error: " << glewGetErrorString(glewErr) << std::endl;
-		exit(1);
-	}
-
-	std::cout << "glGenBuffers ptr      = " << (void*)glGenBuffers << std::endl;
-	std::cout << "glBindBuffer ptr      = " << (void*)glBindBuffer << std::endl;
-	std::cout << "glGenVertexArrays ptr = " << (void*)glGenVertexArrays << std::endl;
-	std::cout << "glBindVertexArray ptr = " << (void*)glBindVertexArray << std::endl;
-
-	glutReshapeWindow(Glut_w, Glut_h);
-
-	glutReshapeFunc(reshape);
-	glutDisplayFunc(display);
-	glutKeyboardFunc(keyboard);
-	glutSpecialFunc(keyboard2);
-	glutMotionFunc(mousedrag);
-	glutMouseFunc(mouse);
-	glutMouseWheelFunc(mouseWheel);
-	glutIdleFunc(idleFunc);
-
-#ifdef __APPLE__
-	CGLContextObj cglCtx = CGLGetCurrentContext();
-	GLint swapInterval = 0;
-	CGLSetParameter(cglCtx, kCGLCPSwapInterval, &swapInterval);
-#endif
-	
-
-	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_LESS);
-
-	glClearColor(1, 1, 1, 0);
-
-	glEnable(GL_MULTISAMPLE);
-
-	GLuint vertexshader = initshaders(GL_VERTEX_SHADER, "shaders/light.vert.glsl");
-	GLuint fragmentshader = initshaders(GL_FRAGMENT_SHADER, "shaders/light.frag.glsl");
-	shaderprogram = initprogram(vertexshader, fragmentshader);
-
-
 	int sm1 = glutCreateMenu(menu);
 	glutAddMenuEntry("Vertex-shading/face-shading", MENU_SHADINGTYPE);
 	glutAddMenuEntry("Mesh", MENU_DRAWMESH);
@@ -619,6 +574,92 @@ void initInterface(int argc, char* argv[])
 	glutAddMenuEntry("Exit", MENU_EXIT);
 
 	glutAttachMenu(GLUT_RIGHT_BUTTON);
+}
+
+#ifdef __APPLE__
+static void menusThenIdle(int)
+{
+	setupGlutMenus(0);
+	glutIdleFunc(idleFunc);
+}
+#endif
+
+
+void finishGraphicsInit()
+{
+	glewExperimental = GL_TRUE;
+	GLenum glewErr = glewInit();
+	if (glewErr != GLEW_OK) {
+		std::cerr << "GLEW init error: " << glewGetErrorString(glewErr) << std::endl;
+		exit(1);
+	}
+
+	std::cout << "glGenBuffers ptr      = " << (void*)glGenBuffers << std::endl;
+	std::cout << "glBindBuffer ptr      = " << (void*)glBindBuffer << std::endl;
+	std::cout << "glGenVertexArrays ptr = " << (void*)glGenVertexArrays << std::endl;
+	std::cout << "glBindVertexArray ptr = " << (void*)glBindVertexArray << std::endl;
+
+#ifdef __APPLE__
+	CGLContextObj cglCtx = CGLGetCurrentContext();
+	GLint swapInterval = 0;
+	CGLSetParameter(cglCtx, kCGLCPSwapInterval, &swapInterval);
+#endif
+
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LESS);
+
+	glClearColor(1, 1, 1, 0);
+
+	glEnable(GL_MULTISAMPLE);
+
+	GLuint vertexshader = initshaders(GL_VERTEX_SHADER, "shaders/light.vert.glsl");
+	GLuint fragmentshader = initshaders(GL_FRAGMENT_SHADER, "shaders/light.frag.glsl");
+	shaderprogram = initprogram(vertexshader, fragmentshader);
+
+	if (m != nullptr && !m->faces.empty()) {
+		makeBuffers(m);
+		std::cout << "DEBUG: num_triangles=" << num_triangles << std::endl;
+		std::cout << "DEBUG: vao[0]=" << vaos[0] << " vao[1]=" << vaos[1] << std::endl;
+		std::cout << "DEBUG: drawmesh=" << drawmesh << " smooth=" << smooth << std::endl;
+	}
+
+	// GLUT Apple : idle + menus pendant le 1er display() peuvent poster un redisplay trop tôt.
+	// Menus puis idle, après retour du 1er display (timer 0).
+#ifdef __APPLE__
+	glutTimerFunc(0, menusThenIdle, 0);
+#else
+	setupGlutMenus(0);
+	glutIdleFunc(idleFunc);
+#endif
+}
+
+
+void initInterface(int argc, char* argv[])
+{
+	glutInit(&argc, argv);
+#if defined(MESHVIEWER_FREEGLUT_COCOA_EMBEDDED)
+	// OpenGL 2.1 « compatibility » (fixed pipeline, glBegin, GLEW) : sans profil explicite,
+	// certaines VM / NSOpenGL refusent le pixel format.
+	glutInitContextVersion(2, 1);
+	glutInitContextProfile(GLUT_COMPATIBILITY_PROFILE);
+#endif
+#ifdef __APPLE__
+	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
+#else
+	glutInitDisplayMode(GLUT_SINGLE | GLUT_RGBA | GLUT_DEPTH | GLUT_MULTISAMPLE);
+#endif
+	glutInitWindowSize(Glut_w, Glut_h);
+	// GLUT Apple : le callback s’enregistre sur la *fenêtre courante* — il faut createWindow
+	// d’abord, sinon l’enregistrement sans fenêtre est ignoré → fenêtre 1 sans display callback.
+	glutCreateWindow("My 4I-IG3 Application!");
+	glutDisplayFunc(display);
+	glutReshapeFunc(reshape);
+
+	glutKeyboardFunc(keyboard);
+	glutSpecialFunc(keyboard2);
+	glutMotionFunc(mousedrag);
+	glutMouseFunc(mouse);
+	glutMouseWheelFunc(mouseWheel);
 }
 
 
