@@ -519,6 +519,9 @@ void keyboard(unsigned char key, int x, int y) {
 		glDeleteVertexArrays(10, &vaos[0]);
 		exit(0);
 		break;
+	case 's':
+		menu(MENU_SIMPLIFY);
+		break;
 	case 'm':
 		break;
 	case 'h':

@@ -32,7 +32,7 @@ public:
 	void triangulateEarClipping();
 	void triangulateEarClipping(myFace *);
 	void simplify();
-	void simplify(myVertex *);
+	bool collapseEdge(myHalfedge *);
 
 	void generateRevolution();
 

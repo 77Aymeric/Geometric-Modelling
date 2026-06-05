@@ -564,26 +564,26 @@ void myMesh::simplify()
 
 	if (shortest != NULL)
 	{
-		shortest->source->originof = shortest;
-		simplify(shortest->source);
+		collapseEdge(shortest);
+		checkMesh();
+		computeNormals();
 	}
 }
 
-void myMesh::simplify(myVertex *v)
+bool myMesh::collapseEdge(myHalfedge *h)
 {
-	if (v == NULL || v->originof == NULL) return;
+	if (h == NULL || h->twin == NULL) return false;
 
-	myHalfedge *h = v->originof;
-	if (h == NULL || h->twin == NULL) return;
+	myHalfedge *t = h->twin;
 
 	myVertex *A = h->source;
-	myVertex *B = h->twin->source;
+	myVertex *B = t->source;
 
-	if (A == NULL || B == NULL || A == B) return;
-	if (A->point == NULL || B->point == NULL) return;
+	if (A == NULL || B == NULL || A == B) return false;
+	if (A->point == NULL || B->point == NULL) return false;
 
 	myFace *f1 = h->adjacent_face;
-	myFace *f2 = h->twin->adjacent_face;
+	myFace *f2 = t->adjacent_face;
 
 	A->point->X = (A->point->X + B->point->X) / 2.0;
 	A->point->Y = (A->point->Y + B->point->Y) / 2.0;
@@ -591,17 +591,62 @@ void myMesh::simplify(myVertex *v)
 
 	for (unsigned int i = 0; i < halfedges.size(); i++)
 	{
-		if (halfedges[i] != NULL && halfedges[i]->source == B)
+		if (halfedges[i]->source == B)
 			halfedges[i]->source = A;
+	}
+
+	h->prev->next = h->next;
+	h->next->prev = h->prev;
+	if (f1 != NULL && f1->adjacent_halfedge == h) f1->adjacent_halfedge = h->next;
+
+	t->prev->next = t->next;
+	t->next->prev = t->prev;
+	if (f2 != NULL && f2->adjacent_halfedge == t) f2->adjacent_halfedge = t->next;
+
+	vector<myHalfedge *> dead;
+	vector<myFace *> deadFaces;
+
+	dead.push_back(h);
+	dead.push_back(t);
+
+	myHalfedge *a1 = h->next;
+	if (a1->next->next == a1)
+	{
+		myHalfedge *b1 = a1->next;
+		if (a1->twin != NULL) a1->twin->twin = b1->twin;
+		if (b1->twin != NULL) b1->twin->twin = a1->twin;
+		dead.push_back(a1);
+		dead.push_back(b1);
+		if (f1 != NULL) deadFaces.push_back(f1);
+	}
+
+	myHalfedge *a2 = t->next;
+	if (a2->next->next == a2)
+	{
+		myHalfedge *b2 = a2->next;
+		if (a2->twin != NULL) a2->twin->twin = b2->twin;
+		if (b2->twin != NULL) b2->twin->twin = a2->twin;
+		dead.push_back(a2);
+		dead.push_back(b2);
+		if (f2 != NULL) deadFaces.push_back(f2);
 	}
 
 	for (unsigned int i = 0; i < halfedges.size(); )
 	{
-		myHalfedge *e = halfedges[i];
+		bool remove = false;
 
-		if (e != NULL && (e->adjacent_face == f1 || e->adjacent_face == f2))
+		for (unsigned int j = 0; j < dead.size(); j++)
 		{
-			delete e;
+			if (halfedges[i] == dead[j])
+			{
+				remove = true;
+				break;
+			}
+		}
+
+		if (remove)
+		{
+			delete halfedges[i];
 			halfedges.erase(halfedges.begin() + i);
 		}
 		else
@@ -612,7 +657,18 @@ void myMesh::simplify(myVertex *v)
 
 	for (unsigned int i = 0; i < faces.size(); )
 	{
-		if (faces[i] == f1 || faces[i] == f2)
+		bool remove = false;
+
+		for (unsigned int j = 0; j < deadFaces.size(); j++)
+		{
+			if (faces[i] == deadFaces[j])
+			{
+				remove = true;
+				break;
+			}
+		}
+
+		if (remove)
 		{
 			delete faces[i];
 			faces.erase(faces.begin() + i);
@@ -634,57 +690,16 @@ void myMesh::simplify(myVertex *v)
 
 	delete B;
 
-	for (unsigned int i = 0; i < halfedges.size(); i++)
-	{
-		if (halfedges[i] != NULL)
-			halfedges[i]->twin = NULL;
-	}
-
-	map<pair<myVertex *, myVertex *>, myHalfedge *> twin_map;
-
-	for (unsigned int i = 0; i < halfedges.size(); i++)
-	{
-		myHalfedge *e = halfedges[i];
-
-		if (e == NULL || e->source == NULL || e->next == NULL || e->next->source == NULL)
-			continue;
-
-		myVertex *src = e->source;
-		myVertex *dst = e->next->source;
-
-		pair<myVertex *, myVertex *> forward(src, dst);
-		pair<myVertex *, myVertex *> backward(dst, src);
-
-		if (twin_map.count(backward))
-		{
-			myHalfedge *twin = twin_map[backward];
-
-			e->twin = twin;
-			twin->twin = e;
-		}
-		else
-		{
-			twin_map[forward] = e;
-		}
-	}
-
 	for (unsigned int i = 0; i < vertices.size(); i++)
-	{
-		if (vertices[i] != NULL)
-			vertices[i]->originof = NULL;
-	}
+		vertices[i]->originof = NULL;
 
 	for (unsigned int i = 0; i < halfedges.size(); i++)
 	{
-		myHalfedge *e = halfedges[i];
-
-		if (e != NULL && e->source != NULL && e->source->originof == NULL)
-		{
-			e->source->originof = e;
-		}
+		if (halfedges[i]->source->originof == NULL)
+			halfedges[i]->source->originof = halfedges[i];
 	}
 
-	computeNormals();
+	return true;
 }
 
 void myMesh::generateRevolution()
