@@ -298,12 +298,155 @@ void myMesh::subdivisionCatmullClark()
 
 void myMesh::simplify()
 {
-	/**** TODO ****/
+	myHalfedge *shortest = NULL;
+	double minLen = 0.0;
+
+	for (unsigned int i = 0; i < halfedges.size(); i++)
+	{
+		myHalfedge *h = halfedges[i];
+
+		if (h == NULL || h->twin == NULL) continue;
+		if (h->source == NULL || h->twin->source == NULL) continue;
+		if (h->source->point == NULL || h->twin->source->point == NULL) continue;
+
+		myPoint3D *a = h->source->point;
+		myPoint3D *b = h->twin->source->point;
+
+		double dx = a->X - b->X;
+		double dy = a->Y - b->Y;
+		double dz = a->Z - b->Z;
+		double len = dx * dx + dy * dy + dz * dz;
+
+		if (shortest == NULL || len < minLen)
+		{
+			shortest = h;
+			minLen = len;
+		}
+	}
+
+	if (shortest != NULL)
+	{
+		shortest->source->originof = shortest;
+		simplify(shortest->source);
+	}
 }
 
-void myMesh::simplify(myVertex *)
+void myMesh::simplify(myVertex *v)
 {
-	/**** TODO ****/
+	if (v == NULL || v->originof == NULL) return;
+
+	myHalfedge *h = v->originof;
+	if (h == NULL || h->twin == NULL) return;
+
+	myVertex *A = h->source;
+	myVertex *B = h->twin->source;
+
+	if (A == NULL || B == NULL || A == B) return;
+	if (A->point == NULL || B->point == NULL) return;
+
+	myFace *f1 = h->adjacent_face;
+	myFace *f2 = h->twin->adjacent_face;
+
+	A->point->X = (A->point->X + B->point->X) / 2.0;
+	A->point->Y = (A->point->Y + B->point->Y) / 2.0;
+	A->point->Z = (A->point->Z + B->point->Z) / 2.0;
+
+	for (unsigned int i = 0; i < halfedges.size(); i++)
+	{
+		if (halfedges[i] != NULL && halfedges[i]->source == B)
+			halfedges[i]->source = A;
+	}
+
+	for (unsigned int i = 0; i < halfedges.size(); )
+	{
+		myHalfedge *e = halfedges[i];
+
+		if (e != NULL && (e->adjacent_face == f1 || e->adjacent_face == f2))
+		{
+			delete e;
+			halfedges.erase(halfedges.begin() + i);
+		}
+		else
+		{
+			i++;
+		}
+	}
+
+	for (unsigned int i = 0; i < faces.size(); )
+	{
+		if (faces[i] == f1 || faces[i] == f2)
+		{
+			delete faces[i];
+			faces.erase(faces.begin() + i);
+		}
+		else
+		{
+			i++;
+		}
+	}
+
+	for (unsigned int i = 0; i < vertices.size(); i++)
+	{
+		if (vertices[i] == B)
+		{
+			vertices.erase(vertices.begin() + i);
+			break;
+		}
+	}
+
+	delete B;
+
+	for (unsigned int i = 0; i < halfedges.size(); i++)
+	{
+		if (halfedges[i] != NULL)
+			halfedges[i]->twin = NULL;
+	}
+
+	map<pair<myVertex *, myVertex *>, myHalfedge *> twin_map;
+
+	for (unsigned int i = 0; i < halfedges.size(); i++)
+	{
+		myHalfedge *e = halfedges[i];
+
+		if (e == NULL || e->source == NULL || e->next == NULL || e->next->source == NULL)
+			continue;
+
+		myVertex *src = e->source;
+		myVertex *dst = e->next->source;
+
+		pair<myVertex *, myVertex *> forward(src, dst);
+		pair<myVertex *, myVertex *> backward(dst, src);
+
+		if (twin_map.count(backward))
+		{
+			myHalfedge *twin = twin_map[backward];
+
+			e->twin = twin;
+			twin->twin = e;
+		}
+		else
+		{
+			twin_map[forward] = e;
+		}
+	}
+
+	for (unsigned int i = 0; i < vertices.size(); i++)
+	{
+		if (vertices[i] != NULL)
+			vertices[i]->originof = NULL;
+	}
+
+	for (unsigned int i = 0; i < halfedges.size(); i++)
+	{
+		myHalfedge *e = halfedges[i];
+
+		if (e != NULL && e->source != NULL && e->source->originof == NULL)
+		{
+			e->source->originof = e;
+		}
+	}
+
+	computeNormals();
 }
 
 void myMesh::generateRevolution()
